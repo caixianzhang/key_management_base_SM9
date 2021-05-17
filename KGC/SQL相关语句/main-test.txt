@@ -1,0 +1,848 @@
+/*
+**	测试加解密功能
+*/
+int main(int argc, char *argv[])
+{
+
+	unsigned char in[1024];
+	unsigned char out[1024];
+	unsigned char res[1024];
+	size_t inlen = 32;
+	size_t outlen;
+	size_t reslen;
+	
+	for(int i = 0; i < (int)inlen; i++)
+	{
+		in[i] = 0xA0 + i;
+	}
+	
+	sm9_encrypt *alice = new sm9_encrypt(string("sm9enc.mpk"), string("bob"));
+
+	//根据身份标识加密
+	alice->encrypt(in, 32, out, &outlen);
+	delete alice;
+
+	//打印加密后的信息
+	for(int i = 0; i < (int)outlen; i++)
+	{
+		if(i % 32 == 0)
+		{
+			printf("\n");
+		}
+		printf("%02X ", out[i]);
+	}
+	printf("\n");
+	
+	sm9_decrypt *bob = new sm9_decrypt(string("bob"));
+
+	//根据标识解密
+	bob->decrypt(out, outlen, res, &reslen);
+	delete bob;
+
+	//打印解密后的信息
+	for(int i = 0; i < (int)reslen; i++)
+	{
+		if(i % 32 == 0)
+		{
+			printf("\n");
+		}
+		printf("%02X ", res[i]);
+	}
+	
+	printf("\n");
+
+	return 0;
+}
+
+/*
+** 测试密钥生成模块性能
+*/
+int main(int argc, char *argv[])
+{
+
+	unsigned char in[1024];
+	unsigned char out[1024];
+	unsigned char res[1024];
+	size_t inlen = 32;
+	size_t outlen;
+	size_t reslen;
+	
+	for(int i = 0; i < (int)inlen; i++)
+	{
+		in[i] = 0xA0 + i;
+	}
+	//密钥类型为非对称加密
+	enum TYPE type = sm9encrypt;
+	//主私钥文件名
+	string msk_file = "sm9enc.msk";
+	//主公钥文件名sm9enc.mpk
+	string mpk_file = "sm9enc.mpk";
+	
+	//生成主密钥
+	sm9_setup *step1 = new sm9_setup(type, msk_file, mpk_file);
+	delete step1;
+
+	//用户ID
+	string ID = string("bob");
+	
+	//生成用户私钥
+	sm9_keygen *step2 = new sm9_keygen(type, msk_file, ID);
+	delete step2;
+	
+	//生成加密对象
+	sm9_encrypt *alice = new sm9_encrypt(mpk_file, ID);
+
+	//根据身份标识，以及加密主公钥进行数据加密
+	alice->encrypt(in, 32, out, &outlen);
+	delete alice;
+
+	//打印加密后的信息
+	for(int i = 0; i < (int)outlen; i++)
+	{
+		if(i % 32 == 0)
+		{
+			printf("\n");
+		}
+		printf("%02X ", out[i]);
+	}
+	printf("\n");
+	
+	sm9_decrypt *bob = new sm9_decrypt(ID);
+
+	//根据标识解密
+	bob->decrypt(out, outlen, res, &reslen);
+	delete bob;
+
+	//打印解密后的信息
+	for(int i = 0; i < (int)reslen; i++)
+	{
+		if(i % 32 == 0)
+		{
+			printf("\n");
+		}
+		printf("%02X ", res[i]);
+	}
+	
+	printf("\n");
+
+	return 0;
+}
+
+/*
+**	数字签名测试
+*/
+int main(int argc, char *argv[])
+{	
+	File *f = new File();
+	//待签名文件
+	string msg_file = "hello.txt";
+	unsigned char *filedata = (unsigned char *)malloc(32);
+	for(int i = 0; i < 32 ; i++)
+	{
+		filedata[i] = 0xA0 + i;
+	}
+	int filelen = 32;
+	f->Write_File(msg_file, filedata, filelen);
+	delete f;
+	
+	//密钥类型为数字签名
+	enum TYPE type = sm9sign;
+	//主私钥文件名
+	string msk_file = "sm9sign.msk";
+	//主公钥文件名sm9enc.mpk
+	string mpk_file = "sm9sign.mpk";
+	
+	//生成主密钥
+	sm9_setup *step1 = new sm9_setup(type, msk_file, mpk_file);
+	delete step1;
+
+	//用户ID
+	string ID = string("bob");
+	
+	//生成用户私钥
+	sm9_keygen *step2 = new sm9_keygen(type, msk_file, ID);
+	delete step2;
+	
+	//生成签名对象
+ 	sm9_sign *bob = new sm9_sign(string("bob.ssk")); 
+	string sig_file = "hello.sig";
+	//进行数字签名
+ 	bob->sign(msg_file, sig_file);
+	delete bob;
+	
+ 	//根据身份标识，以及加密主公钥进行验证签名
+	sm9_verify *alice = new sm9_verify(mpk_file);
+	alice->verify(ID, msg_file, sig_file);
+	return 0;
+}
+
+/*
+** 密钥交换测试
+*/
+int main(int argc, char *argv[])
+{	
+	//生成主公钥
+	sm9_setup *setup = new sm9_setup(sm9keyagreement, "master.msk", "master.mpk");
+	delete setup;
+
+	//发起方A初始化信息
+	sm9_key_exchange *exchange_ini_A = new sm9_key_exchange("Alice", "Bob", "master.msk");
+	
+	//响应方B初始化信息
+	sm9_key_exchange *exchange_ini_B = new sm9_key_exchange("Bob", "Alice", "master.msk");
+
+	unsigned char RA[65];
+	memcpy(RA, exchange_ini_A->Get_R(), 65);
+	unsigned char RB[65];
+	memcpy(RB, exchange_ini_B->Get_R(), 65);
+
+	sm9_bob *B = new sm9_bob(exchange_ini_B, 32, RA);
+	B->compute_share_key();
+	
+	printf("SKB:\n");
+	for(int i = 0;i < 32; i++)
+	{
+		printf("%02X ", (B->Get_SKB())[i]);
+	}
+	printf("\n");	
+
+	sm9_alice *A = new sm9_alice(exchange_ini_A, 32, RB, B->Get_SB());
+	A->compute_share_key();
+	
+	//发起方A打印共享密钥
+	printf("SKA:\n");
+	for(int i = 0; i < 32; i++)
+	{
+		printf("%02X ", (A->Get_SKA())[i]);
+	}
+	printf("\n");
+
+	printf("SA:\n");
+	for(int i = 0; i < 32; i++)
+	{
+		printf("%02X ", (A->Get_SA())[i]);
+	}
+	printf("\n");
+	
+	printf("S2:\n");
+	for(int i = 0; i < 32; i++)
+	{
+		printf("%02X ", (B->Get_S2())[i]);
+	}
+	printf("\n");
+
+	B->check_SA(A->Get_SA());
+	
+	return 0;
+}
+
+/*
+** 命令行交互框架
+*/
+int main(int argc, char *argv[])
+{	
+	if(argc == 3)
+	{
+		if(string(argv[1]) == string(ADD))
+		{
+			//添加新节点
+			
+		}else if(string(argv[1]) == string(DELETE))
+		{
+			//删除节点
+			
+		}else if(string(argv[1]) == string(UPDATE))
+		{
+			/*
+				更新所有节点用户密钥，
+				（1）如果节点为新加入的节点，
+					则以文件形式保存新加入节点的用户私钥，
+					等待将用户私钥以某种安全的方式注入到相应节点设备中后，
+					(注密枪 or 密码卡), 然后对相关密钥文件删除。
+				（2）否则更新所有节点用户私钥，
+					将新的用户私钥以网络的形式加密分发到相应的节点。
+			*/
+			
+		}else
+		{
+			printf("int main(int argc, char *argv[]): format wrong !!!");
+		}
+	}else if(argc == 2)
+	{
+		//清除相关私钥文件
+		
+	}else
+	{
+		printf("int main(int argc, char *argv[]): format wrong !!!");
+	}
+	return 0;
+}
+
+/*
+** 命令行加入用户
+*/
+int main(int argc, char *argv[])
+{	
+	MyDB *db = new MyDB();
+	string MachineID, IP;
+
+	MachineID = "Master";
+	IP = "192.168.136.137";
+	db->AddMachine(MachineID, IP);
+
+	MachineID = "Alice";
+	IP = "192.168.136.137";
+	db->AddMachine(MachineID, IP);
+
+	MachineID = "Bob";
+	IP = "192.168.136.137";
+	db->AddMachine(MachineID, IP);
+	
+	delete db;
+	return 0;
+}
+
+/*
+**	数据库生成用户信息列表
+*/
+int main(int argc, char *argv[])
+{	
+	MyDB *db = new MyDB();
+
+	vector<UserInfo *> *res;
+	res = db->GetUserInfoList();
+	delete db;
+
+	KGC *kgc = new KGC(res);
+	kgc->setup();
+	kgc->keygen();
+	kgc->genskmessage();
+	
+	for(auto iter:(*res))
+	{
+		printf("ID:%s\n", iter->MachineID);
+		printf("IP:%s\n", iter->IP);
+		printf("version:%s\n", iter->skmessage.version);
+		
+		printf("ssk:\n");
+		print(iter->skmessage.ssk, iter->skmessage.ssklen);
+		printf("smpk:\n");
+		print(iter->skmessage.smpk, iter->skmessage.smpklen);
+		
+		printf("esk:\n");
+		print(iter->skmessage.esk, iter->skmessage.esklen);
+		printf("empk:\n");
+		print(iter->skmessage.empk, iter->skmessage.empklen);
+	}
+	
+	delete kgc;
+	
+	return 0;
+}
+
+/*
+**	命令行交互生成用户信息分发密钥
+*/
+int main(int argc, char *argv[])
+{	
+	if(argc == 4 && string("add") == string(argv[1]))
+	{
+		MyDB *db = new MyDB();
+		db->AddMachine(argv[2], argv[3]);
+		delete db;
+	}else if(argc == 4 && string("config") == string(argv[1]))
+	{
+		MyDB *db = new MyDB();
+		db->SetIP(argv[2], argv[3]);
+		delete db;
+	}else if(argc == 3 && string("delete") == string(argv[1]))
+	{
+		MyDB *db = new MyDB();
+		db->DelMachine(argv[2]);
+		delete db;
+	}else if(argc == 2 && string("clear") == string(argv[1]))
+	{
+		//执行清除私钥操作
+	}else if(argc == 3 && string("update") == string(argv[1]))
+	{
+		/*
+			更新密钥版本号，生成对应版本密钥, 如果为首次分发，则保留字节密钥，
+			否则将密钥删除，并通过网络分发到相应节点
+			
+			MyDB *db = new MyDB();
+
+			vector<UserInfo *> *res;
+			res = db->GetUserInfoList();
+			delete db;
+
+			KGC *kgc = new KGC(res);
+			kgc->setup();
+			kgc->keygen();
+			kgc->genskmessage();
+			
+			for(auto iter:(*res))
+			{
+				printf("ID:%s\n", iter->MachineID);
+				printf("IP:%s\n", iter->IP);
+				printf("version:%s\n", iter->skmessage.version);
+				
+				printf("ssk:\n");
+				print(iter->skmessage.ssk, iter->skmessage.ssklen);
+				printf("smpk:\n");
+				print(iter->skmessage.smpk, iter->skmessage.smpklen);
+				
+				printf("esk:\n");
+				print(iter->skmessage.esk, iter->skmessage.esklen);
+				printf("empk:\n");
+				print(iter->skmessage.empk, iter->skmessage.empklen);
+			}
+			
+			delete kgc;
+		*/
+		
+		MyDB *db = new MyDB();
+		//更新密钥版本号
+		db->UpdateKeyVersion(argv[2]);
+	
+		//读取用户状态
+		vector<UserInfo *> *userlist;
+		userlist = db->GetUserInfoList();
+		
+		//生成主密钥
+		KGC *kgc = new KGC(userlist);
+
+		//生成密钥文件
+		kgc->setup();
+		kgc->keygen();
+
+		while(1);
+		
+		//生成分发报文
+		kgc->genskmessage();
+
+		//更新密钥分发状态
+		db->Updatedistributesk();
+		
+		delete db;
+		delete kgc;
+	}else if(argc == 2 && string("help") == string(argv[1]))
+	{
+		cout << "	使用方法(需切换至root)：\n" << endl;
+		
+		cout << "	1.添加新节点(KGC的ID为Master不变)" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC add nodename(节点名称) ip(ip地址)\n" << endl;
+
+		cout << "	2.修改节点IP" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC config nodename(节点名称) ip(ip地址)\n" << endl;
+
+		cout << "	3.删除节点" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC delete nodename(节点名称)\n" << endl;
+
+		cout << "	4.删除所有用户私钥文件" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC clear\n" << endl;
+
+		cout << "	5.更新所有节点用户私钥" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC update version(版本号)\n" << endl;
+
+		cout << "	6.帮助" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC help\n" << endl;
+	}else
+	{
+		cout << "输入错误: try ./KGC help" << endl;
+	}	 
+	return 0;
+}
+/*
+**	命令行交互更新版本号
+*/
+int main(int argc, char *argv[])
+{	
+	if(argc == 4 && string("add") == string(argv[1]))
+	{
+		MyDB *db = new MyDB();
+		db->AddMachine(argv[2], argv[3]);
+		delete db;
+	}else if(argc == 4 && string("config") == string(argv[1]))
+	{
+		MyDB *db = new MyDB();
+		db->SetIP(argv[2], argv[3]);
+		delete db;
+	}else if(argc == 3 && string("delete") == string(argv[1]))
+	{
+		MyDB *db = new MyDB();
+		db->DelMachine(argv[2]);
+		delete db;
+	}else if(argc == 2 && string("clear") == string(argv[1]))
+	{
+		//执行清除私钥操作
+	}else if(argc == 3 && string("update") == string(argv[1]))
+	{
+		/*
+			更新密钥版本号，生成对应版本密钥, 如果为首次分发，则保留字节密钥，
+			否则将密钥删除，并通过网络分发到相应节点。
+		*/
+		MyDB *db = new MyDB();
+		
+		//更新密钥版本号
+		db->UpdateKeyVersion(argv[2]);
+	
+		//读取用户状态
+		vector<UserInfo *> *userlist;
+		userlist = db->GetUserInfoList();
+		
+		//生成主密钥
+		KGC *kgc = new KGC(userlist);
+
+		//生成密钥文件
+		kgc->setup();
+		kgc->keygen();
+		
+		//生成分发报文
+		kgc->genskmessage();
+
+		//更新密钥分发状态
+		db->Updatedistributesk();
+		
+		delete db;
+		delete kgc;
+	}else if(argc == 2 && string("help") == string(argv[1]))
+	{
+		cout << "	使用方法(需切换至root)：\n" << endl;
+		
+		cout << "	1.添加新节点(KGC的ID为Master不变)" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC add nodename(节点名称) ip(ip地址)\n" << endl;
+
+		cout << "	2.修改节点IP" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC config nodename(节点名称) ip(ip地址)\n" << endl;
+
+		cout << "	3.删除节点" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC delete nodename(节点名称)\n" << endl;
+
+		cout << "	4.删除所有用户私钥文件" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC clear\n" << endl;
+
+		cout << "	5.更新所有节点用户私钥" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC update version(版本号)\n" << endl;
+
+		cout << "	6.帮助" << endl;
+		cout << "	e.g. root@ubuntu:/home/caixianzhang/KGC# ./KGC help\n" << endl;
+	}else
+	{
+		cout << "输入错误: try ./KGC help" << endl;
+	}	 
+	return 0;
+}
+
+/*
+** SM4 CBC模式
+*/
+int main(int argc, char *argv[])
+{	
+	unsigned char key[16] = {0x01,0x23,0x45,0x67,0x89,0xab,0xcd,0xef,0xfe,0xdc,0xba,0x98,0x76,0x54,0x32,0x10};
+	unsigned char iv[16] = {0x01,0x23,0x45,0x67,0x89,0xab,0xcd,0xef,0xfe,0xdc,0xba,0x98,0x76,0x54,0x32,0x10};
+	unsigned char in[64];
+	unsigned char out[64];
+	unsigned char out_plain[64];
+	memset(in, 0xAA, 64);
+	
+	sm4_cbc *sm4 = new sm4_cbc(key, iv);
+
+	sm4->sm4_cbc_enc(in, out, 64);
+
+	printf("加密:\n");
+	print(out, 64);
+
+	sm4->sm4_cbc_dec(out, out_plain, 64);
+
+	printf("解密:\n");
+	print(out_plain, 64);
+	
+	return 0;
+}
+
+/*
+**	测试长报文加解密功能
+*/
+int main(int argc, char *argv[])
+{
+
+	unsigned char in[1024];
+	unsigned char out[1024 * 1024];
+	unsigned char res[1024];
+	size_t inlen = 1024;
+	size_t outlen;
+	size_t reslen;
+	
+	for(int i = 0; i < (int)inlen; i++)
+	{
+		in[i] = 0xA0 + i;
+	}
+	delete (new sm9_setup(sm9encrypt, "sm9enc.msk", "sm9enc.mpk"));
+	delete (new sm9_keygen(sm9encrypt, "sm9enc.msk", "bob"));
+	
+	sm9_encrypt *alice = new sm9_encrypt("sm9enc.mpk", "bob");
+
+	//根据身份标识加密
+	alice->encrypt_long(in, inlen, out, &outlen);
+	delete alice;
+
+	//打印加密后的信息
+	for(int i = 0; i < (int)outlen; i++)
+	{
+		if(i % 32 == 0)
+		{
+			printf("\n");
+		}
+		printf("%02X ", out[i]);
+	}
+	printf("\noutlen: %d \n", (int)outlen);
+	
+	sm9_decrypt *bob = new sm9_decrypt("bob");
+
+	//根据标识解密
+	bob->decrypt_long(inlen, out, outlen, res, &reslen);
+	delete bob;
+
+	//打印解密后的信息
+	for(int i = 0; i < (int)reslen; i++)
+	{
+		if(i % 32 == 0)
+		{
+			printf("\n");
+		}
+		printf("%02X ", res[i]);
+	}
+	
+	printf("\n");
+
+	return 0;
+}
+
+/*
+**	测试密钥协商
+*/
+int main(int argc, char *argv[])
+{
+	//初始化随机数池
+	Rand256_Pool *randpool = new Rand256_Pool();
+	//提取随机数
+	Rand256_Node *rand1 = randpool->Get_Rand256_Node();
+	
+	string Alice = "Alice";
+	string Bob = "Bob";
+
+	//生成签名公私钥
+	delete (new sm9_setup(sm9sign, "sm9sign.msk", "sm9sign.mpk"));
+	delete (new sm9_keygen(sm9sign, "sm9sign.msk", Alice));
+	delete (new sm9_keygen(sm9sign, "sm9sign.msk", Bob));
+	clearfile("sm9sign.msk");
+
+	//生成加密公私钥
+	delete (new sm9_setup(sm9encrypt, "sm9enc.msk", "sm9enc.mpk"));
+	delete (new sm9_keygen(sm9encrypt, "sm9enc.msk", Alice));
+	delete (new sm9_keygen(sm9encrypt, "sm9enc.msk", Bob));
+	clearfile("sm9enc.msk");
+	
+	mskmessage *agreemskB = new mskmessage();
+	memset(agreemskB, 0, sizeof(mskmessage));
+	
+	//Bob向Alice发送盐值
+	memcpy(agreemskB->rand, rand1->Get_Rand256(), 32);
+	
+	mskmessage *agreemskA = new mskmessage();
+	//Alice接收盐值
+	memcpy(agreemskA, agreemskB, sizeof(mskmessage));
+
+	//Alice生成密钥协商的msk
+	agreement_Alice *A = new agreement_Alice(Alice, Bob, agreemskA);
+	
+	//ALice对msk加密
+	A->Init();
+	
+	//Alice对盐值和加密后的msk签名
+	A->sign();
+
+	//Bob接收Alice发来的消息
+	memcpy(agreemskB, agreemskA, sizeof(mskmessage));
+
+	//回填随机数
+	memcpy(agreemskB->rand, rand1->Get_Rand256(), 32);
+
+	//Bob初始化
+	agreement_Bob *B = new agreement_Bob(Alice, Bob, agreemskB);
+
+	//Bob对报文验签
+	B->verify();
+	
+	//Bob解密密钥协商的msk, 完成初始化并生成RB
+	B->Init();
+	
+	//Bob接收RA，并计算共享密钥
+	unsigned char RA[65];
+	memcpy(RA, A->GetRA(), 65);
+	B->compute_share_key(RA);
+	printf("SKB:\n");
+	print(B->GetSKB(), 32);
+	
+	//Alice接收RB SB，并计算共享密钥
+	unsigned char RB[65];
+	memcpy(RB, B->GetRB(), 65);
+	unsigned char SB[32];
+	memcpy(SB, B->GetSB(), 32);
+	
+	A->compute_share_key(RB, SB);
+	printf("SKA:\n");
+	print(A->GetSKA(), 32);
+
+	//Bob接收SA 验证共享密钥
+	unsigned char SA[32];
+	memcpy(SA, A->GetSA(), 32);		
+	B->checkSA(SA);
+
+	return 0;
+}
+
+/*
+**	测试密钥目录分发
+*/
+int main(int argc, char *argv[])
+{
+	string Master = "Master";
+	string Alice = "Alice";
+	string Bob = "Bob";
+	string IP = "192.168.136,137";
+	
+	MyDB *db = new MyDB();
+	db->AddMachine(Master, IP);
+	db->AddMachine(Alice, IP);
+	db->AddMachine(Bob, IP);
+	//读取用户列表信息
+	vector<UserInfo *> *userlist = db->GetUserInfoList();
+	delete db;
+
+	KGC *kgc = new KGC(userlist);
+	//生成主密钥对，并将其存放到对应的用户目录下
+	kgc->setup();
+	//生成用户密钥对
+	kgc->keygen();
+
+	delete kgc;
+	
+	return 0;
+}
+
+/*
+**	测试双向认证
+*/
+int main(int argc, char *argv[])
+{
+	string Alice = "Alice";
+	string Bob = "Bob";
+	Rand256_Pool *pool = new Rand256_Pool();
+	Rand256_Node *randA = pool->Get_Rand256_Node();
+	Rand256_Node *randB = pool->Get_Rand256_Node();
+
+	//生成Alice工作目录以及私钥副本
+	string dirA = to_string(*(unsigned int *)randA->Get_Rand256()) + "/";
+	createdir(dirA);
+	gensk(Alice, dirA);
+	
+	two_way_auth *A = new two_way_auth(Alice, Bob, randA, dirA);
+	//获取A的询问报文
+	chapmessage *messA = A->Getchallenge();
+
+	//生成Bob工作目录以及私钥副本
+	string dirB = to_string(*(unsigned int *)randB->Get_Rand256()) + "/";
+	createdir(dirB);
+	gensk(Bob, dirB);
+	
+	two_way_auth *B = new two_way_auth(Bob, Alice, randB, dirB);
+	//获取B的询问报文
+	chapmessage *messB = B->Getchallenge();
+
+	chapmessage mess;
+	
+	//网络传输A的询问报文
+	memcpy((void *)&mess, (void *)messA, sizeof(chapmessage));
+
+	//B对A的询问报文签字
+	B->sign(&mess);
+
+	//网络回传
+	//A对回传报文验签
+	if(A->verify(&mess) == true)
+	{
+		printf("peer B is valid !\n");
+	}
+
+	//网络传输B的询问报文
+	memcpy((void *)&mess, (void *)messB, sizeof(chapmessage));
+
+	//A对B的询问报文签字
+	A->sign(&mess);
+
+	//网络回传
+	//B对回传报文验签
+	if(B->verify(&mess) == true)
+	{
+		printf("peer A is valid !\n");
+	}
+	
+	delete A;
+	delete B;
+	delete messA;
+	delete messB;
+
+	delsk(Alice, dirA);
+	removedir(dirA);
+
+	delsk(Bob, dirB);
+	removedir(dirB);
+	
+	return 0;
+}
+
+/*
+**	测试密钥本地分发
+*/
+int main(int argc, char *argv[])
+{
+	Rand256_Pool *randpool = new Rand256_Pool();
+	ThreadPool *threadpool = new ThreadPool();
+	MyDB *db = new MyDB();
+
+	db->AddMachine("Master", "192.168.136.156");
+	db->AddMachine("Alice", "192.168.136.156");
+	db->AddMachine("Bob", "192.168.136.156");
+
+	//生成密钥版本号
+	db->UpdateKeyVersion("V1.1");
+	//读取用户列表
+	vector<UserInfo *> *res = db->GetUserInfoList(); 
+
+	//派生新版本密钥
+	KGC *kgc = new KGC(res);
+	kgc->setup();
+	kgc->keygen();
+
+	//读取会话密钥
+	read_selfsk(KGCID);
+
+	for(auto iter : *res)
+	{
+		session_directory *session_dir = new session_directory(KGCID, randpool->Get_Rand256_Node());
+		Task_Node *task = new distribute(iter, session_dir);
+		threadpool->Add_Task_To_ThreadPool(task);
+	}
+
+	sleep(10);
+	
+	delete kgc;
+	
+	//刷新发布状态
+	db->Updatedistributesk();
+	delete db;
+	
+	return 0;
+}
+
